@@ -213,6 +213,14 @@ let lastPointer = { x: 0, y: 0 };
 const cv = document.getElementById('game-cv');
 const ctx = cv.getContext('2d');
 
+function isMobileLike() {
+  // Prefer pointer characteristics over UA sniffing
+  return (
+    (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ||
+    (navigator && navigator.maxTouchPoints && navigator.maxTouchPoints > 0)
+  );
+}
+
 function cx(c) { return PAD + c * (CS + GAP); }
 function cy(r) { return PAD + r * (CS + GAP); }
 
@@ -389,13 +397,17 @@ function loop() {
   let falling = false;
   animBlocks.forEach(b => {
     if (b.landed) return;
-    // Faster gravity animation for falling blocks
-    b.vy += 1.35; b.y += b.vy;
+    const mobile = isMobileLike();
+    const gravity = mobile ? 1.85 : 1.35;
+    b.vy += gravity; b.y += b.vy;
     const ty = cy(b.toRow);
     if (b.y >= ty) {
-      b.y = ty; b.vy = -b.vy * .24; b.bounces = (b.bounces || 0) + 1;
+      const bounce = mobile ? 0.18 : 0.24;
+      b.y = ty; b.vy = -b.vy * bounce; b.bounces = (b.bounces || 0) + 1;
       spawnParticles(cx(b.col) + CS / 2, ty + CS, b.pal, 4);
-      if (b.bounces >= 2 || Math.abs(b.vy) < 1.4) { b.y = ty; b.vy = 0; b.landed = true; }
+      const maxBounces = mobile ? 1 : 2;
+      const minVy = mobile ? 1.8 : 1.4;
+      if (b.bounces >= maxBounces || Math.abs(b.vy) < minVy) { b.y = ty; b.vy = 0; b.landed = true; }
     }
     const sq = b.landed ? 1 : Math.max(.7, 1 - Math.abs(b.vy) * .012);
     drawBlock(ctx, cx(b.col), b.y, CS, b.pal, 1, sq);
@@ -606,15 +618,23 @@ function touchLiftPx() {
   return activePointerType === 'touch' ? 72 : 0;
 }
 
+function touchLeftPx() {
+  // Horizontal shift so the ghost is not hidden by the finger.
+  // IMPORTANT: the same shift is also applied to preview/drop calculations.
+  return activePointerType === 'touch' ? 18 : 0;
+}
+
 function adjustedClientPoint(clientX, clientY) {
   const lift = touchLiftPx();
-  return { x: clientX, y: clientY - lift };
+  const left = touchLeftPx();
+  return { x: clientX - left, y: clientY - lift };
 }
 
 function moveGhost(x, y) {
   const g = document.getElementById('ghost');
   const touchLift = touchLiftPx();
-  g.style.left = (x - 22) + 'px';
+  const touchLeft = touchLeftPx();
+  g.style.left = (x - 22 - touchLeft) + 'px';
   g.style.top = (y - 22 - touchLift) + 'px';
 }
 
