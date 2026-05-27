@@ -621,7 +621,7 @@ function touchLiftPx() {
 function touchLeftPx() {
   // Horizontal shift so the ghost is not hidden by the finger.
   // IMPORTANT: the same shift is also applied to preview/drop calculations.
-  return activePointerType === 'touch' ? 18 : 0;
+  return activePointerType === 'touch' ? 26 : 0;
 }
 
 function adjustedClientPoint(clientX, clientY) {
