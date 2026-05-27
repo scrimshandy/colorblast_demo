@@ -615,13 +615,13 @@ function buildGhost(idx) {
 function touchLiftPx() {
   // Lift applied to keep the ghost visible above the finger on touch devices.
   // IMPORTANT: the same lift is also applied to preview/drop calculations.
-  return activePointerType === 'touch' ? 72 : 0;
+  return activePointerType === 'touch' ? 84 : 0;
 }
 
 function touchLeftPx() {
   // Horizontal shift so the ghost is not hidden by the finger.
   // IMPORTANT: the same shift is also applied to preview/drop calculations.
-  return activePointerType === 'touch' ? 26 : 0;
+  return activePointerType === 'touch' ? 34 : 0;
 }
 
 function adjustedClientPoint(clientX, clientY) {
