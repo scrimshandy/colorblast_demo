@@ -209,6 +209,7 @@ let pressureSpawnsLeft = 0;
 let activePointerId = null;
 let activePointerType = null;
 let lastPointer = { x: 0, y: 0 };
+let deferredDrop = null; // { idx, x, y } applied after animations finish
 
 const cv = document.getElementById('game-cv');
 const ctx = cv.getContext('2d');
@@ -264,11 +265,21 @@ function rr(c, x, y, w, h, r) {
   c.closePath();
 }
 
-function drawBlock(c, x, y, sz, pal, alpha = 1, sc = 1) {
-  c.save(); c.globalAlpha = alpha;
-  const bcx = x + sz / 2, bcy = y + sz / 2;
-  c.translate(bcx, bcy); c.scale(sc, sc); c.translate(-bcx, -bcy);
+const BLOCK_CACHE = new Map();
 
+function getBlockSprite(pal, sz) {
+  const key = `${pal.base}|${pal.light}|${pal.glow}|${sz}`;
+  const hit = BLOCK_CACHE.get(key);
+  if (hit) return hit;
+
+  const pad = 14; // room for glow/shadow baked into sprite
+  const cv = document.createElement('canvas');
+  cv.width = sz + pad * 2;
+  cv.height = sz + pad * 2;
+  const c = cv.getContext('2d');
+
+  // Draw the same block visuals once into an offscreen canvas
+  const x = pad, y = pad;
   const grd = c.createRadialGradient(x + sz * .3, y + sz * .25, sz * .04, x + sz * .55, y + sz * .6, sz * .85);
   grd.addColorStop(0, pal.light);
   grd.addColorStop(0.45, pal.base);
@@ -291,6 +302,19 @@ function drawBlock(c, x, y, sz, pal, alpha = 1, sc = 1) {
 
   c.beginPath(); c.ellipse(x + sz * .72, y + sz * .78, sz * .1, sz * .06, 0.4, 0, Math.PI * 2);
   c.fillStyle = 'rgba(255,255,255,.12)'; c.fill();
+
+  const sprite = { cv, pad };
+  BLOCK_CACHE.set(key, sprite);
+  return sprite;
+}
+
+function drawBlock(c, x, y, sz, pal, alpha = 1, sc = 1) {
+  const sprite = getBlockSprite(pal, sz);
+  c.save();
+  c.globalAlpha = alpha;
+  const bcx = x + sz / 2, bcy = y + sz / 2;
+  c.translate(bcx, bcy); c.scale(sc, sc); c.translate(-bcx, -bcy);
+  c.drawImage(sprite.cv, x - sprite.pad, y - sprite.pad);
   c.restore();
 }
 
@@ -303,6 +327,7 @@ function shadeColor(hex, pct) {
 }
 
 function spawnParticles(px, py, pal, n = 16) {
+  if (isMobileLike()) n = Math.max(6, Math.floor(n * 0.65));
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, spd = 1.5 + Math.random() * 5;
     particles.push({
@@ -423,6 +448,9 @@ function loop() {
       animating = false; cb();
     }
   }
+
+  // If user released during animation, apply drop immediately after it ends.
+  flushDeferredDropIfReady();
 }
 
 function runGravity(cb) {
@@ -592,7 +620,7 @@ function onDrop(r, c) {
 }
 
 function startDrag(idx, e) {
-  if (animating || pieces[idx].used) return;
+  if (pieces[idx].used) return;
   dragPieceIdx = idx;
   pieces[idx].shape._pal = pieces[idx].pal;
   document.querySelectorAll('.piece-box')[idx].classList.add('dragging-src');
@@ -681,6 +709,11 @@ function onPointerUp(e) {
   if (dragPieceIdx < 0) return;
   if (activePointerId !== null && e.pointerId !== activePointerId) return;
   const adj = adjustedClientPoint(lastPointer.x, lastPointer.y);
+  if (animating) {
+    deferredDrop = { idx: dragPieceIdx, x: adj.x, y: adj.y };
+    endDrag();
+    return;
+  }
   tryDropAtPoint(adj.x, adj.y);
   if (dragPieceIdx >= 0) endDrag();
 }
@@ -689,6 +722,18 @@ document.addEventListener('pointermove', onPointerMove, { passive: false });
 document.addEventListener('pointerup', onPointerUp, { passive: false });
 document.addEventListener('pointercancel', () => { if (dragPieceIdx >= 0) endDrag(); });
 cv.addEventListener('pointerleave', () => { previewCells = []; previewCombo = []; });
+
+function flushDeferredDropIfReady() {
+  if (deferredDrop && !animating) {
+    const d = deferredDrop;
+    deferredDrop = null;
+    if (!pieces[d.idx] || pieces[d.idx].used) return;
+    dragPieceIdx = d.idx;
+    pieces[d.idx].shape._pal = pieces[d.idx].pal;
+    tryDropAtPoint(d.x, d.y);
+    if (dragPieceIdx >= 0) endDrag();
+  }
+}
 
 function checkGameOver() {
   const any = pieces.some(p => {
